@@ -75,6 +75,29 @@ def aggregate(df, group_cols):
     if df.empty:
         return pd.DataFrame()
 
+    # group_cols が空のとき＝全体集計
+    if not group_cols:
+        total_diff = df["差枚"].sum()
+        total_g = df["G数"].sum()
+        total_in = df["投入枚数"].sum()
+        count = df["台番"].count()
+        plus_count = df["プラス"].sum()
+        days = df["日付"].nunique()
+
+        rate = ((total_diff + total_in) / total_in * 100) if total_in != 0 else None
+        plus_rate = (plus_count / count * 100) if count != 0 else None
+
+        return pd.DataFrame([{
+            "総差枚": int(round(total_diff)),
+            "総G数": total_g,
+            "総投入枚数": total_in,
+            "台数": count,
+            "プラス台数": plus_count,
+            "集計日数": days,
+            "機械割(%)": round(rate, 2) if rate is not None else None,
+            "プラス台率(%)": round(plus_rate, 1) if plus_rate is not None else None,
+        }])
+
     g = (
         df.groupby(group_cols, as_index=False)
         .agg(
