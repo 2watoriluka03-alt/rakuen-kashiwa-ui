@@ -9,12 +9,16 @@ SUMMARY_DIR = Path("summary")
 st.set_page_config(page_title="楽園柏 分析UI", layout="wide")
 st.title("楽園柏 分析UI")
 
+# =====================
+# 共通関数
+# =====================
 def load_csv(name):
     p = SUMMARY_DIR / name
     if not p.exists():
         st.warning(f"ファイルなし: {name}")
         return pd.DataFrame()
     return pd.read_csv(p, encoding="utf-8-sig")
+
 
 def num(sr):
     return pd.to_numeric(
@@ -25,15 +29,65 @@ def num(sr):
         errors="coerce"
     )
 
+
 def full_zorome(n):
     s = str(int(n))
     return len(s) >= 2 and len(set(s)) == 1
+
 
 def machine_rate(total_diff, total_g):
     total_in = total_g * 3
     if total_in == 0:
         return None
     return (total_diff + total_in) / total_in * 100
+
+
+def fmt_int(v, suffix="枚"):
+    try:
+        return f"{int(round(float(v))):,}{suffix}"
+    except Exception:
+        return "-"
+
+
+def fmt_float(v, suffix=""):
+    try:
+        return f"{float(v):,.2f}{suffix}"
+    except Exception:
+        return "-"
+
+
+def stat_cards(items):
+    cols = st.columns(2)
+    for i, (label, value) in enumerate(items):
+        with cols[i % 2]:
+            st.markdown(
+                f"""
+                <div style="
+                    border:1px solid rgba(255,255,255,0.18);
+                    border-radius:14px;
+                    padding:14px 16px;
+                    margin-bottom:12px;
+                    background:rgba(17,24,39,0.92);
+                    min-height:86px;
+                ">
+                    <div style="font-size:14px;color:#9ca3af;margin-bottom:6px;">{label}</div>
+                    <div style="
+                        font-size:28px;
+                        font-weight:800;
+                        line-height:1.15;
+                        white-space:normal;
+                        word-break:keep-all;
+                        overflow-wrap:anywhere;
+                    ">{value}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+def show_df(df, height=520):
+    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
+
 
 def prep_all_units(df):
     if df.empty:
@@ -65,6 +119,7 @@ def prep_all_units(df):
 
     return df
 
+
 def aggregate(df, group_cols):
     if df.empty:
         return pd.DataFrame()
@@ -82,11 +137,11 @@ def aggregate(df, group_cols):
 
         return pd.DataFrame([{
             "総差枚": int(round(total_diff)),
-            "総G数": total_g,
-            "総投入枚数": total_in,
-            "台数": count,
-            "プラス台数": plus_count,
-            "集計日数": days,
+            "総G数": int(round(total_g)),
+            "総投入枚数": int(round(total_in)),
+            "台数": int(count),
+            "プラス台数": int(plus_count),
+            "集計日数": int(days),
             "機械割(%)": round(rate, 2) if rate is not None else None,
             "プラス台率(%)": round(plus_rate, 1) if plus_rate is not None else None,
         }])
@@ -106,8 +161,11 @@ def aggregate(df, group_cols):
     g["機械割(%)"] = ((g["総差枚"] + g["総投入枚数"]) / g["総投入枚数"] * 100).round(2)
     g["プラス台率(%)"] = (g["プラス台数"] / g["台数"] * 100).round(1)
     g["総差枚"] = g["総差枚"].round(0).astype(int)
+    g["総G数"] = g["総G数"].round(0).astype(int)
+    g["総投入枚数"] = g["総投入枚数"].round(0).astype(int)
 
     return g.sort_values(["機械割(%)", "総差枚"], ascending=False)
+
 
 def day_comment(df_day):
     if df_day.empty:
@@ -147,11 +205,16 @@ def day_comment(df_day):
 
     return "\n\n".join(lines)
 
+
+# =====================
+# データ読込
+# =====================
 all_units = prep_all_units(load_csv("rakuen_kashiwa_all_units_merged.csv"))
 
 if all_units.empty:
     st.error("all_units データがありません。summaryフォルダを確認してください。")
     st.stop()
+
 
 tabs = st.tabs([
     "機種ランキング",
@@ -168,24 +231,26 @@ tabs = st.tabs([
     "朝イチ用",
 ])
 
+
 with tabs[0]:
     st.header("機種ランキング")
     min_days = st.slider("最低集計日数", 1, int(all_units["日付"].nunique()), 1, key="machine_days")
     df = aggregate(all_units, ["機種"])
     df = df[df["集計日数"] >= min_days]
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    show_df(df)
+
 
 with tabs[1]:
     st.header("末尾・ゾロ目ランキング")
 
     st.subheader("一桁末尾")
-    st.dataframe(aggregate(all_units, ["末尾"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["末尾"]))
 
     st.subheader("下二桁ゾロ目：00 / 11 / 22 / 33 ...")
-    st.dataframe(aggregate(all_units[all_units["下二桁ゾロ目"]], ["下二桁"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["下二桁ゾロ目"]], ["下二桁"]))
 
     st.subheader("完全ゾロ目：111 / 222 / 333 ...")
-    st.dataframe(aggregate(all_units[all_units["完全ゾロ目"]], ["台番"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["完全ゾロ目"]], ["台番"]))
 
     st.subheader("カテゴリ比較")
     cat_rows = []
@@ -203,7 +268,8 @@ with tabs[1]:
     if cat_rows:
         cat = pd.DataFrame(cat_rows)
         cat = cat[["カテゴリ", "総差枚", "機械割(%)", "プラス台率(%)", "台数", "集計日数"]]
-        st.dataframe(cat, use_container_width=True, hide_index=True)
+        show_df(cat, height=300)
+
 
 with tabs[2]:
     st.header("機種×末尾クロス分析")
@@ -213,15 +279,14 @@ with tabs[2]:
     st.subheader("機種×一桁末尾")
     cross = aggregate(all_units, ["機種", "末尾"])
     cross = cross[cross["台数"] >= min_count]
-    st.dataframe(cross, use_container_width=True, hide_index=True)
+    show_df(cross)
 
     st.subheader("機種×下二桁ゾロ目")
-    cross_double = aggregate(all_units[all_units["下二桁ゾロ目"]], ["機種", "下二桁"])
-    st.dataframe(cross_double, use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["下二桁ゾロ目"]], ["機種", "下二桁"]))
 
     st.subheader("機種×完全ゾロ目")
-    cross_full = aggregate(all_units[all_units["完全ゾロ目"]], ["機種", "台番"])
-    st.dataframe(cross_full, use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["完全ゾロ目"]], ["機種", "台番"]))
+
 
 with tabs[3]:
     st.header("各台カルテ")
@@ -239,7 +304,7 @@ with tabs[3]:
         unit_stats = unit_stats.sort_values(["機械割(%)", "総差枚"], ascending=False)
 
     st.subheader("台番別ランキング")
-    st.dataframe(unit_stats, use_container_width=True, hide_index=True)
+    show_df(unit_stats)
 
     st.subheader("台番カルテ")
     selected_unit = st.selectbox("台番を選択", sorted(view["台番"].unique().tolist()))
@@ -253,32 +318,44 @@ with tabs[3]:
     max_win = int(hist["差枚"].max())
     max_lose = int(hist["差枚"].min())
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("総差枚", f"{total_diff:,}枚")
-    c2.metric("平均差枚", f"{avg_diff:,}枚")
-    c3.metric("勝率", f"{win_rate}%")
-    c4.metric("機械割", f"{rate:.2f}%" if rate is not None else "-")
-    c5.metric("最大勝ち", f"{max_win:,}枚")
-    c6.metric("最大負け", f"{max_lose:,}枚")
+    stat_cards([
+        ("総差枚", fmt_int(total_diff)),
+        ("平均差枚", fmt_int(avg_diff)),
+        ("勝率", fmt_float(win_rate, "%")),
+        ("機械割", fmt_float(rate, "%") if rate is not None else "-"),
+        ("最大勝ち", fmt_int(max_win)),
+        ("最大負け", fmt_int(max_lose)),
+    ])
 
     st.subheader("日別履歴")
+    hist_view = hist.sort_values("日付", ascending=False)[
+        ["日付", "曜日", "機種", "台番", "差枚", "G数", "出率", "末尾", "下二桁ゾロ目", "完全ゾロ目"]
+    ]
+
     st.dataframe(
-        hist.sort_values("日付", ascending=False)[
-            ["日付", "曜日", "機種", "台番", "差枚", "G数", "出率", "末尾", "下二桁ゾロ目", "完全ゾロ目"]
-        ],
+        hist_view,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        height=520,
+        column_config={
+            "日付": st.column_config.DatetimeColumn("日付", format="YYYY-MM-DD"),
+            "差枚": st.column_config.NumberColumn("差枚", format="%d枚"),
+            "G数": st.column_config.NumberColumn("G数", format="%dG"),
+            "出率": st.column_config.NumberColumn("出率", format="%.2f%%"),
+            "台番": st.column_config.NumberColumn("台番", format="%d"),
+            "末尾": st.column_config.NumberColumn("末尾", format="%d"),
+        }
     )
 
     st.subheader("曜日別カルテ")
-    st.dataframe(aggregate(hist, ["曜日"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(hist, ["曜日"]), height=350)
 
     st.subheader("月別カルテ")
-    st.dataframe(aggregate(hist, ["年月"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(hist, ["年月"]), height=350)
 
     st.subheader("特定日カルテ")
     special_days = hist[hist["日"].isin([7, 17, 22, 27])].copy()
-    st.dataframe(aggregate(special_days, ["日"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(special_days, ["日"]), height=350)
 
     st.subheader("台番推移グラフ")
     chart = hist.copy()
@@ -293,38 +370,42 @@ with tabs[3]:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+
 with tabs[4]:
     st.header("曜日分析")
     st.subheader("曜日別 全体")
-    st.dataframe(aggregate(all_units, ["曜日"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["曜日"]))
 
     st.subheader("曜日×末尾")
-    st.dataframe(aggregate(all_units, ["曜日", "末尾"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["曜日", "末尾"]))
 
     st.subheader("曜日×機種")
-    st.dataframe(aggregate(all_units, ["曜日", "機種"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["曜日", "機種"]))
+
 
 with tabs[5]:
     st.header("月別分析")
     st.subheader("月別 全体")
-    st.dataframe(aggregate(all_units, ["年月"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["年月"]))
 
     st.subheader("月別×機種")
-    st.dataframe(aggregate(all_units, ["年月", "機種"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["年月", "機種"]))
 
     st.subheader("月別×末尾")
-    st.dataframe(aggregate(all_units, ["年月", "末尾"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["年月", "末尾"]))
+
 
 with tabs[6]:
     st.header("週別分析")
     st.subheader("週別 全体")
-    st.dataframe(aggregate(all_units, ["週"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["週"]))
 
     st.subheader("週別×機種")
-    st.dataframe(aggregate(all_units, ["週", "機種"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["週", "機種"]))
 
     st.subheader("週別×末尾")
-    st.dataframe(aggregate(all_units, ["週", "末尾"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["週", "末尾"]))
+
 
 with tabs[7]:
     st.header("月またぎ同日比較")
@@ -340,19 +421,20 @@ with tabs[7]:
     target = all_units[all_units["日"].isin(days)].copy()
 
     st.subheader("対象日 全体")
-    st.dataframe(aggregate(target, ["日付"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(target, ["日付"]))
 
     st.subheader("対象日×機種")
-    st.dataframe(aggregate(target, ["日付", "機種"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(target, ["日付", "機種"]))
 
     st.subheader("対象日×末尾")
-    st.dataframe(aggregate(target, ["日付", "末尾"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(target, ["日付", "末尾"]))
 
     st.subheader("対象日×下二桁ゾロ目")
-    st.dataframe(aggregate(target[target["下二桁ゾロ目"]], ["日付", "下二桁"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(target[target["下二桁ゾロ目"]], ["日付", "下二桁"]))
 
     st.subheader("対象日×完全ゾロ目")
-    st.dataframe(aggregate(target[target["完全ゾロ目"]], ["日付", "台番"]), use_container_width=True, hide_index=True)
+    show_df(aggregate(target[target["完全ゾロ目"]], ["日付", "台番"]))
+
 
 with tabs[8]:
     st.header("ヒートマップ")
@@ -412,7 +494,8 @@ with tabs[8]:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("元データ")
-    st.dataframe(pivot, use_container_width=True)
+    st.dataframe(pivot, use_container_width=True, height=520)
+
 
 with tabs[9]:
     st.header("全台検索")
@@ -452,8 +535,19 @@ with tabs[9]:
     st.dataframe(
         view[["日付", "曜日", "機種", "台番", "末尾", "下二桁", "下二桁ゾロ目", "完全ゾロ目", "差枚", "G数", "出率"]],
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        height=620,
+        column_config={
+            "日付": st.column_config.DatetimeColumn("日付", format="YYYY-MM-DD"),
+            "差枚": st.column_config.NumberColumn("差枚", format="%d枚"),
+            "G数": st.column_config.NumberColumn("G数", format="%dG"),
+            "出率": st.column_config.NumberColumn("出率", format="%.2f%%"),
+            "台番": st.column_config.NumberColumn("台番", format="%d"),
+            "末尾": st.column_config.NumberColumn("末尾", format="%d"),
+            "下二桁": st.column_config.NumberColumn("下二桁", format="%d"),
+        }
     )
+
 
 with tabs[10]:
     st.header("その日の傾向")
@@ -471,23 +565,32 @@ with tabs[10]:
         [["日付", "曜日", "機種", "台番", "末尾", "下二桁", "下二桁ゾロ目", "完全ゾロ目", "差枚", "G数", "出率"]]
         .head(50),
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        height=520,
+        column_config={
+            "日付": st.column_config.DatetimeColumn("日付", format="YYYY-MM-DD"),
+            "差枚": st.column_config.NumberColumn("差枚", format="%d枚"),
+            "G数": st.column_config.NumberColumn("G数", format="%dG"),
+            "出率": st.column_config.NumberColumn("出率", format="%.2f%%"),
+            "台番": st.column_config.NumberColumn("台番", format="%d"),
+        }
     )
+
 
 with tabs[11]:
     st.header("朝イチ用")
 
     st.subheader("強機種 TOP20")
-    st.dataframe(aggregate(all_units, ["機種"]).head(20), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["機種"]).head(20))
 
     st.subheader("強末尾 TOP10")
-    st.dataframe(aggregate(all_units, ["末尾"]).head(10), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["末尾"]).head(10), height=360)
 
     st.subheader("機種×末尾 本命候補 TOP50")
-    st.dataframe(aggregate(all_units, ["機種", "末尾"]).head(50), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units, ["機種", "末尾"]).head(50))
 
     st.subheader("下二桁ゾロ目 本命候補")
-    st.dataframe(aggregate(all_units[all_units["下二桁ゾロ目"]], ["下二桁"]).head(20), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["下二桁ゾロ目"]], ["下二桁"]).head(20), height=420)
 
     st.subheader("完全ゾロ目 本命候補")
-    st.dataframe(aggregate(all_units[all_units["完全ゾロ目"]], ["台番"]).head(20), use_container_width=True, hide_index=True)
+    show_df(aggregate(all_units[all_units["完全ゾロ目"]], ["台番"]).head(20), height=420)
