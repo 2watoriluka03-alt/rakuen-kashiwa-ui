@@ -67,14 +67,15 @@ def stat_cards(items):
                     border-radius:14px;
                     padding:14px 16px;
                     margin-bottom:12px;
-                    background:rgba(17,24,39,0.92);
+                    background:#1f2937;
                     min-height:86px;
                 ">
-                    <div style="font-size:14px;color:#9ca3af;margin-bottom:6px;">{label}</div>
+                    <div style="font-size:15px;color:#d1d5db;margin-bottom:6px;">{label}</div>
                     <div style="
-                        font-size:28px;
+                        font-size:30px;
                         font-weight:800;
                         line-height:1.15;
+                        color:#ffffff;
                         white-space:normal;
                         word-break:keep-all;
                         overflow-wrap:anywhere;
